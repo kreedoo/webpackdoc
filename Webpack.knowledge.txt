@@ -1,0 +1,113 @@
+Webpack 有以下几个核心概念：
+    * Entry：入口，Webpack 执行构建的第一步将从 Entry 开始，可抽象成输入。
+    * Module：模块，在 Webpack 里一切皆模块，一个模块对应着一个文件。Webpack 会从配置的 Entry 开始递归找出所有依赖的模块。
+    * Chunk：代码块，一个 Chunk 由多个模块组合而成，用于代码合并与分割。
+    * Loader：模块转换器，用于把模块原内容按照需求转换成新内容。
+    * Plugin：扩展插件，在 Webpack 构建流程中的特定时机注入扩展逻辑来改变构建结果或做你想要的事情。
+    * Output：输出结果，在 Webpack 经过一系列处理并得出最终想要的代码后输出结果。
+流程：
+    Webpack 启动后会从 Entry 里配置的 Module 开始递归解析 Entry 依赖的所有 Module。 每找到一个 Module， 就会根据配置的 Loader 去找出对应的转换规则，对 Module 进行转换后，再解析出当前 Module 依赖的 Module。 这些模块会以 Entry 为单位进行分组，一个 Entry 和其所有依赖的 Module 被分到一个组也就是一个 Chunk。最后 Webpack 会把所有 Chunk 转换成文件输出。 在整个流程中 Webpack 会在恰当的时机执行 Plugin 里定义的逻辑。
+////////////////////// 配置选项
+通常可用如下经验去判断如何配置 Webpack：
+    * 想让源文件加入到构建流程中去被 Webpack 控制，配置 entry。
+    * 想自定义输出文件的位置和名称，配置 output。
+    * 想自定义寻找依赖模块时的策略，配置 resolve。
+    * 想自定义解析和转换文件的策略，配置 module，通常是配置 module.rules 里的 Loader。
+    * 其它的大部分需求可能要通过 Plugin 去实现，配置 plugin。
+// Entry:
+    * context，Webpack 在寻找相对路径的文件时会以 context 为根目录，context 必须是一个绝对路径的字符串，如：path.resolve(__dirname, 'app')
+    * entry，配置是必填的，若不填则将导致 Webpack 报错退出
+        entry，可以是以下三种中的一种或者相互组合：
+            1. string  './app/entry'   入口模块的文件路径，可以是相对路径。
+            2. array   ['./app/entry1', './app/entry2']    入口模块的文件路径，可以是相对路径。
+            3. object  { a: './app/entry-a', b: ['./app/entry-b1', './app/entry-b2']}  配置多个入口，每个入口生成一个 Chunk
+            4. 函数生成动态entry，返回object|array|string值
+                // 同步函数
+                entry: () => {
+                    return {
+                        a:'./pages/a',
+                        b:'./pages/b',
+                    }
+                };
+                // 异步函数
+                entry: () => {
+                    return new Promise((resolve)=>{
+                        resolve({
+                            a:'./pages/a',
+                            b:'./pages/b',
+                        });
+                    });
+                };
+        注：如果是 array 类型，则搭配 output.library 配置项使用时，只有数组里的最后一个入口文件的模块会被导出。
+    * Chunk 名称
+        Webpack 会为每个生成的 Chunk 取一个名称，Chunk 的名称和 Entry 的配置有关：
+            如果 entry 是一个 string 或 array，就只会生成一个 Chunk，这时 Chunk 的名称是 main；
+            如果 entry 是一个 object，就可能会出现多个 Chunk，这时 Chunk 的名称是 object 键值对里键的名称。
+// Output:
+    output，必须是一个object，里面包含一系列配置项：
+        * filename，string类型，定义输出文件的名称：
+            1. 静态(单文件)：filename: 'bundle.js'
+            2. 动态(多文件)：filename: '[name].js'
+                针对动态输出chunk名称，可引用的内置变量有：
+                id：chunk的唯一标识，从0开始
+                name：chunk的名称
+                hash：chunk的唯一标识的Hash值
+                chunkhash：chunk的内容的Hash值
+                其中hash和chunkhash可指定长度，如'[hash:8].js'，默认20
+                注意：如果使用ExtractTextWebpackPlugin插件，chunkhash得换成contenthash。
+        * chunkFilename，它与filename非常类似，使用规则一样，只不过它是用于定义无入口的Chunk在输出时的文件名称，常见的会用在运行时生成Chunk场景有使用CommonChunkPlugin、使用import('path/to/module')动态加载时等
+        * path，定义输出文件存放在本地的某一个目录，必须是string类型的绝对路径：path.resolve(__dirname, 'dist[hash]')。内置变量只有一个hash。
+        * publicPath，定义发布到线上资源的URL前缀，string类型，默认空字符串''，即使用相对路径。内置变量只有一个hash。
+        * libraryTarget和library，它们通常搭配在一起使用：
+            libraryTarget，定义以何种方式导出库，是字符串的枚举类型
+            library定义导出库的名称
+// Module：
+    module.rules，定义模块的读取和解析规则，通常用来配置Loader，array类型。
+    配置一项rules大致如下：
+        1. 条件匹配:
+            test: /\.js$/
+            include: [path.resolve(__dirname, 'src')]
+            exclude: [path.resolve(__dirname, 'node_modules')]
+        2. 应用规则:
+            use: ['style-loader', 'css-loader', 'sass-loader']
+            use: [
+                {
+                    loader: 'babel-loader',
+                    options: {
+                        cacheDirectory: true
+                    },
+                    enforce: 'post'
+                }
+            ]
+        3. 重置顺序:
+            // 一组Loader的执行顺序默认是从右到左post，可以通过enforce更改顺序为从左到右pre
+            enforce: 'post|pre'
+// Resolve:
+    resolve定义webpack如何寻找模块所对应的文件。
+    * resolve.alias定义通过别名来把导入路径映射成一个新的导入路径：
+        alias: {
+            components: './src/components',
+            'react$': '/path/to/react.min.js'
+        }
+        当你用 import Button from 'components/Button' 导入是，会被alias替换成：
+        import Button from './src/components/Button'
+        当你导入以react结尾的语句时，如import 'react'会被替换成import '/path/to/react.min.js'
+    * resolve.mainFields定义有限采用哪份代码，默认：['browser', 'main']
+    * resolve.extensions定义补全导入语句没带文件后缀的语句，默认：['.js', '.json']
+        即当遇到require('./data')时，webpack先找'./data.js'，如果没找到'./data.json'，如果还是找不到就报错
+    * resolve.modules定义webpack去哪些目录下寻找第三方模块，默认：['node_modules']
+        项目里会有一些模块会大量被其他模块依赖和导入，由于模块的位置分布不定，针对不同的文件都要去计算被导入的模块文件的相对路径，这个路径有时候会很长，就像import '../../../components/butotn'，这是可以通过modules配置项优化，如：['./src/components', 'node_modules']，那么就可以如此引用：import 'button'。
+// Plugins:
+    plugins让webpack可以做任何构建相关的事情，array类型，数组里的每一项都是一个要使用的Plugin实例，Plugin需要的参数通过构造函数传入。
+        const CommonsChunkPlugin = require('webpack/lib/optimize/CommonsChunkPlugin');
+        module.exports = {
+            plugins: [
+                new CommonsChunkPlugin({
+                    name: 'common',
+                    chunks: ['a', 'b']
+                })
+            ]
+        };
+// 其他：
+    devtool
+    target定义webpack构建出针对不同运行环境的代码，可以定义为：'web|node|async-node|webworker|electron-main|electron-renderer'，默认
